@@ -138,7 +138,7 @@ export function NewCaseDialog({ open, onOpenChange, onSubmit }: NewCaseDialogPro
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent position="popper" sideOffset={4}>
                   <SelectItem value="senior">Senior</SelectItem>
                   <SelectItem value="wolontariusz">Wolontariusz</SelectItem>
                   <SelectItem value="dopasowanie">Dopasowanie</SelectItem>
@@ -154,7 +154,7 @@ export function NewCaseDialog({ open, onOpenChange, onSubmit }: NewCaseDialogPro
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent position="popper" sideOffset={4}>
                   <SelectItem value="pilna">Pilna</SelectItem>
                   <SelectItem value="wysoka">Wysoka</SelectItem>
                   <SelectItem value="standardowa">Standardowa</SelectItem>

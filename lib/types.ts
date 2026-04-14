@@ -46,12 +46,16 @@ export interface NewCaseData {
   nextStepDate?: string;
 }
 
+// Sort options
+export type CaseSort = "opoznione" | "priorytet" | "najnowsze" | "najstarsze" | "termin";
+
 // Filter state
 export interface CaseFilters {
   status: CaseStatus | "all";
   priority: CasePriority | "all";
   coordinatorId: string | "all";
   search: string;
+  sort: CaseSort;
 }
 
 // KPI stats

@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useMemo } from "react";
+import { use, useState, useEffect } from "react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
@@ -28,9 +28,9 @@ import {
   MessageSquare,
   Save,
 } from "lucide-react";
-import { demoCases, coordinators, getCoordinatorById, isCaseDelayed } from "@/lib/demo-data";
+import { coordinators, isCaseDelayed } from "@/lib/demo-data";
 import { STATUS_CONFIG, PRIORITY_CONFIG } from "@/lib/types";
-import type { CaseStatus, CasePriority } from "@/lib/types";
+import type { Case, CaseStatus, CasePriority } from "@/lib/types";
 
 const typeIcons = {
   senior: User,
@@ -38,7 +38,7 @@ const typeIcons = {
   dopasowanie: Users,
 };
 
-const typeLabels = {
+const typeLabels: Record<string, string> = {
   senior: "Senior",
   wolontariusz: "Wolontariusz",
   dopasowanie: "Dopasowanie",
@@ -54,17 +54,85 @@ function formatDate(dateStr: string | null): string {
   });
 }
 
+function mapApiCase(r: Record<string, unknown>): Case {
+  const priorityMap: Record<string, Case["priority"]> = {
+    urgent: "pilna", pilna: "pilna", wysoki: "pilna",
+    high: "wysoka", wysoka: "wysoka", sredni: "wysoka",
+    normal: "standardowa", standardowa: "standardowa", niski: "standardowa",
+  };
+  const statusMap: Record<string, Case["status"]> = {
+    new: "nowa", nowa: "nowa",
+    "in-progress": "w-trakcie", "w-trakcie": "w-trakcie", ready: "w-trakcie", proposed: "w-trakcie",
+    waiting: "oczekuje", oczekuje: "oczekuje", paused: "oczekuje", risk: "oczekuje",
+    closed: "zamknieta", zamknieta: "zamknieta",
+  };
+  return {
+    id: r.id as string,
+    title: r.title as string,
+    type: (r.type as Case["type"]) ?? "senior",
+    status: statusMap[r.status as string] ?? "nowa",
+    priority: priorityMap[r.priority as string] ?? "standardowa",
+    coordinatorId: (r.coordinator_id as string) ?? null,
+    personName: (r.related_person_name as string) ?? "",
+    personContact: (r.related_person_phone as string) ?? "",
+    region: (r.region as string) ?? "",
+    description: (r.description as string) ?? "",
+    operationalNote: (r.operational_note as string) ?? "",
+    lastContactDate: null,
+    nextStepDate: r.due_date ? (r.due_date as string).split("T")[0] : null,
+    createdAt: (r.created_at as string)?.split("T")[0] ?? "",
+    updatedAt: (r.updated_at as string)?.split("T")[0] ?? "",
+  };
+}
+
 export default function CaseDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  
-  // Find the case
-  const caseItem = useMemo(() => demoCases.find((c) => c.id === id), [id]);
-  
-  const [status, setStatus] = useState<CaseStatus>(caseItem?.status || "nowa");
-  const [priority, setPriority] = useState<CasePriority>(caseItem?.priority || "standardowa");
-  const [coordinatorId, setCoordinatorId] = useState<string>(caseItem?.coordinatorId || "");
-  const [note, setNote] = useState(caseItem?.operationalNote || "");
+
+  const [caseItem, setCaseItem] = useState<Case | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<CaseStatus>("nowa");
+  const [priority, setPriority] = useState<CasePriority>("standardowa");
+  const [coordinatorId, setCoordinatorId] = useState<string>("");
+  const [note, setNote] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/cases/${id}`)
+      .then((r) => r.json())
+      .then((data) => {
+        const mapped = mapApiCase(data);
+        setCaseItem(mapped);
+        setStatus(mapped.status);
+        setPriority(mapped.priority);
+        setCoordinatorId(mapped.coordinatorId ?? "");
+        setNote(mapped.operationalNote ?? "");
+      })
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    await fetch(`/api/cases/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status,
+        priority,
+        coordinator_id: coordinatorId || null,
+        coordinator_name: coordinators.find((c) => c.id === coordinatorId)?.name ?? null,
+        operational_note: note,
+      }),
+    });
+    setIsSaving(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Ładowanie sprawy...</p>
+      </div>
+    );
+  }
 
   if (!caseItem) {
     return (
@@ -80,18 +148,11 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
     );
   }
 
-  const TypeIcon = typeIcons[caseItem.type];
-  const coordinator = getCoordinatorById(coordinatorId);
+  const TypeIcon = typeIcons[caseItem.type] ?? User;
+  const coordinator = coordinators.find((c) => c.id === coordinatorId);
   const isDelayed = isCaseDelayed(caseItem);
   const statusConfig = STATUS_CONFIG[status];
   const priorityConfig = PRIORITY_CONFIG[priority];
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    // Simulate saving
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    setIsSaving(false);
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -135,7 +196,6 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Main content */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Basic info */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -157,7 +217,6 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
               </CardContent>
             </Card>
 
-            {/* Person info */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -187,20 +246,21 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
                       </div>
                     </div>
                   )}
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-muted">
-                      <MapPin className="h-4 w-4 text-muted-foreground" />
+                  {caseItem.region && (
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-muted">
+                        <MapPin className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Region</p>
+                        <p className="font-medium">{caseItem.region}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Region</p>
-                      <p className="font-medium">{caseItem.region}</p>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
 
-            {/* Operational note */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -225,7 +285,6 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Status and priority */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -235,14 +294,12 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground mb-2 block">
-                    Status
-                  </label>
+                  <label className="text-sm font-medium text-muted-foreground mb-2 block">Status</label>
                   <Select value={status} onValueChange={(v) => setStatus(v as CaseStatus)}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent position="popper" sideOffset={4}>
                       <SelectItem value="nowa">Nowa</SelectItem>
                       <SelectItem value="w-trakcie">W trakcie</SelectItem>
                       <SelectItem value="oczekuje">Oczekuje</SelectItem>
@@ -254,14 +311,12 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
                   </Badge>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground mb-2 block">
-                    Priorytet
-                  </label>
+                  <label className="text-sm font-medium text-muted-foreground mb-2 block">Priorytet</label>
                   <Select value={priority} onValueChange={(v) => setPriority(v as CasePriority)}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent position="popper" sideOffset={4}>
                       <SelectItem value="pilna">Pilna</SelectItem>
                       <SelectItem value="wysoka">Wysoka</SelectItem>
                       <SelectItem value="standardowa">Standardowa</SelectItem>
@@ -274,7 +329,6 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
               </CardContent>
             </Card>
 
-            {/* Coordinator */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -287,7 +341,7 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
                   <SelectTrigger>
                     <SelectValue placeholder="Wybierz koordynatora" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper" sideOffset={4}>
                     {coordinators.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.name}
@@ -298,7 +352,7 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
                 {coordinator && (
                   <div className="mt-3 p-3 rounded-lg bg-muted flex items-center gap-3">
                     <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-primary">
-                      {coordinator.name.split(" ").map((n) => n[0]).join("")}
+                      {coordinator.name.split(" ").map((n: string) => n[0]).join("")}
                     </div>
                     <div>
                       <p className="font-medium">{coordinator.name}</p>
@@ -309,7 +363,6 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
               </CardContent>
             </Card>
 
-            {/* Dates */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
